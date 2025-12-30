@@ -1,44 +1,61 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-import tensorflow as tf
+from tensorflow import keras
+import os
 
-st.set_page_config(
-    page_title="COVID-19 X-ray Detection",
-    layout="centered"
-)
+st.set_page_config(page_title="COVID-19 X-Ray Detection", layout="centered")
 
-st.title("🩻 COVID-19 Detection from Chest X-ray")
-st.write("Upload a chest X-ray image to predict COVID-19")
+st.title("🫁 COVID-19 Chest X-Ray Detection")
 
-MODEL_PATH = "covid_xray_cnn_final.h5"
+MODEL_PATH = "covid_xray_cnn_final.keras"
+IMG_SIZE = 224
 
+# ---------- DEBUG CHECK ----------
+st.write("Model file exists:", os.path.exists(MODEL_PATH))
+
+# ---------- LOAD MODEL ----------
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model(
-        MODEL_PATH,
-        compile=False,
-        safe_mode=False
-    )
+    return keras.models.load_model(MODEL_PATH, compile=False)
 
-model = load_model()
+try:
+    with st.spinner("Loading model..."):
+        model = load_model()
+    st.success("Model loaded successfully")
+except Exception as e:
+    st.error("Model failed to load")
+    st.exception(e)
+    st.stop()
 
+# ---------- IMAGE UPLOAD ----------
 uploaded_file = st.file_uploader(
     "Upload Chest X-ray Image",
     type=["jpg", "jpeg", "png"]
 )
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded X-ray", width=300)
-
-    image = image.resize((224, 224))
+def preprocess_image(image):
+    image = image.convert("RGB")
+    image = image.resize((IMG_SIZE, IMG_SIZE))
     image = np.array(image) / 255.0
     image = np.expand_dims(image, axis=0)
+    return image
 
-    prediction = model.predict(image)[0][0]
+if uploaded_file:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    if prediction < 0.5:
-        st.error(f"🦠 COVID-19 Detected\nConfidence: {(1 - prediction) * 100:.2f}%")
+    img = preprocess_image(image)
+
+    with st.spinner("Predicting..."):
+        prediction = model.predict(img)
+
+    prob = float(prediction[0][0])
+
+    if prob >= 0.5:
+        st.error(f"🦠 COVID-19 Detected ({prob:.2%})")
     else:
-        st.success(f"✅ Normal X-ray\nConfidence: {prediction * 100:.2f}%")
+        st.success(f"✅ Normal ({(1-prob):.2%})")
+
+st.markdown("---")
+st.caption("For educational purposes only.")
